@@ -2,6 +2,9 @@
 # https://github.com/Jefernater58/Golf
 
 import random
+from tabulate import tabulate
+
+HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
 
 
 class Card:
@@ -32,7 +35,9 @@ class Card:
 
 
 class Pile:
-    def __init__(self, cards=[]):
+    def __init__(self, cards=None):
+        if cards is None:
+            cards = []
         self.cards = cards
 
     def fill_deck(self):
@@ -43,6 +48,9 @@ class Pile:
     def append_card(self, card):
         self.cards.append(card)
 
+    def get_size(self):
+        return len(self.cards)
+
     def remove_top(self):
         return self.cards.pop(0)
 
@@ -50,8 +58,60 @@ class Pile:
         random.shuffle(self.cards)
 
 
-deck = Pile()
-deck.fill_deck()
-deck.shuffle()
+class Hand:
+    def __init__(self, draw_p):
+        self.width = HAND_SIZE // 2
+        self.cards = [[None for _ in range(self.width)] for _ in range(2)]
+        self.face_up = [[False for _ in range(self.width)] for _ in range(2)]
+        for row in range(2):
+            for card in range(self.width):
+                self.cards[row][card] = draw_p.remove_top()
 
-print("Welcome to Golf! ")
+    def render(self):
+        """for row in range(2):
+            line = ""
+            for card in range(self.width):
+                if self.face_up[row][card]:
+                    line += self.cards[row][card].create_string() + "\t|\t"
+                else:
+                    line += "HIDDEN CARD\t|\t"
+            print(line + "\n".ljust(len(line), "-"))"""
+
+        render_array = [["" for _ in range(self.width)] for _ in range(2)]
+        for row in range(2):
+            for card in range(self.width):
+                if self.face_up[row][card]:
+                    render_array[row][card] = self.cards[row][card].create_string()
+                else:
+                    render_array[row][card] = "Hidden Card"
+
+        return tabulate(render_array, tablefmt="simple_grid", stralign="center").splitlines()
+
+    def calculate_score(self):
+        score = 0
+        for card in range(self.width):
+            c1 = self.cards[0][card]
+            c2 = self.cards[1][card]
+            if c1.rank == c2.rank:
+                continue
+            else:
+                score += c1.score + c2.score
+        return score
+
+
+draw_pile = Pile()
+draw_pile.fill_deck()
+draw_pile.shuffle()
+
+print("GOLF.PY - by Freddie Rayner\nWelcome Human. Are you ready to play? I will let you go first...\n")
+
+player_hand = Hand(draw_pile)
+computer_hand = Hand(draw_pile)
+
+player_hand_render = player_hand.render()
+computer_hand_render = computer_hand.render()
+
+
+print(" YOUR CARDS".ljust(len(player_hand_render[0]) + 4) + " COMPUTER'S CARDS")
+for line in range(len(player_hand_render)):
+    print(player_hand_render[line] + "    " + computer_hand_render[line])
