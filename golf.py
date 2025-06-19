@@ -109,6 +109,7 @@ draw_pile.fill_deck()
 draw_pile.shuffle()
 
 discard_pile = Pile(False)
+discard_pile.append_card(draw_pile.remove_top())
 
 print("GOLF.PY - by Freddie Rayner\nWelcome Human. Are you ready to play? I will let you go first...\n")
 
