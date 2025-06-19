@@ -2,6 +2,7 @@
 # https://github.com/Jefernater58/Golf
 
 import random
+from termcolor import colored
 from tabulate import tabulate
 
 HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
@@ -36,7 +37,8 @@ class Card:
 
 
 class Pile:
-    def __init__(self, cards=None):
+    def __init__(self, hidden, cards=None):
+        self.hidden = hidden
         if cards is None:
             cards = []
         self.cards = cards
@@ -57,6 +59,14 @@ class Pile:
 
     def shuffle(self):
         random.shuffle(self.cards)
+
+    def create_top_card_string(self):
+        if len(self.cards) > 0:
+            if self.hidden:
+                return "Hidden Card"
+            return self.cards[0].create_string()
+        else:
+            return "Empty"
 
 
 class Hand:
@@ -91,19 +101,27 @@ class Hand:
         return score
 
 
-draw_pile = Pile()
+draw_pile = Pile(True)
 draw_pile.fill_deck()
 draw_pile.shuffle()
+
+discard_pile = Pile(False)
 
 print("GOLF.PY - by Freddie Rayner\nWelcome Human. Are you ready to play? I will let you go first...\n")
 
 player_hand = Hand(draw_pile)
 computer_hand = Hand(draw_pile)
 
+draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid", stralign="center").splitlines()
+discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid", stralign="center").splitlines()
+print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})", "dark_grey"))
+
+for line in range(len(draw_pile_render)):
+    print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(discard_pile_render[line], "dark_grey"))
+
 player_hand_render = player_hand.render()
 computer_hand_render = computer_hand.render()
 
-
-print(" YOUR CARDS".ljust(len(player_hand_render[0]) + 4) + " COMPUTER'S CARDS")
+print(colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
 for line in range(len(player_hand_render)):
-    print(player_hand_render[line] + "    " + computer_hand_render[line])
+    print(colored(player_hand_render[line], "white")+ "    " + colored(computer_hand_render[line], "blue"))
