@@ -29,6 +29,7 @@ class Card:
             return "Joker"
 
         value_names = {11: "Jack", 12: "Queen", 13: "King", 1: "Ace"}
+
         if 2 <= self.rank <= 10:
             return f"{self.rank} of {self.suit}"
         return f"{value_names[self.rank]} of {self.suit}"
@@ -68,15 +69,6 @@ class Hand:
                 self.cards[row][card] = draw_p.remove_top()
 
     def render(self):
-        """for row in range(2):
-            line = ""
-            for card in range(self.width):
-                if self.face_up[row][card]:
-                    line += self.cards[row][card].create_string() + "\t|\t"
-                else:
-                    line += "HIDDEN CARD\t|\t"
-            print(line + "\n".ljust(len(line), "-"))"""
-
         render_array = [["" for _ in range(self.width)] for _ in range(2)]
         for row in range(2):
             for card in range(self.width):
