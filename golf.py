@@ -100,11 +100,24 @@ class Hand:
         for card in range(self.width):
             c1 = self.cards[0][card]
             c2 = self.cards[1][card]
-            if c1.rank == c2.rank:
+            if c1.rank == c2.rank and self.face_up[0][card] and self.face_up[1][card]:
                 continue
             else:
-                score += c1.score + c2.score
+                score += c1.score if self.face_up[0][card] else 0
+                score += c2.score if self.face_up[1][card] else 0
         return score
+
+
+class Computer:
+    def __init__(self, hand, skill):
+        self.hand = hand
+        self.skill = skill
+
+    def calculate_turn(self, player_h, discard_p):
+        current_score = self.hand.calculate_score()
+        current_player_score = player_h.calculate_score()
+
+        losing = current_score < current_player_score  # oh no! let's play more carefully because i dont wanna lose
 
 
 # get an input as an int and check it is between two values
@@ -156,7 +169,8 @@ player_hand.face_up[turn_row_1][turn_column_1] = True
 player_hand.face_up[turn_row_2][turn_column_2] = True
 
 # create and initialise the bot
-computer_hand = Hand(draw_pile)
+# i need to make skill levels for dumb players
+computer = Computer(Hand(draw_pile), 0)
 
 # main loop
 game_over = False
@@ -224,3 +238,5 @@ while not game_over:
 
     else:
         discard_pile.add_to_top(draw_card)
+
+    # computer's go now!
