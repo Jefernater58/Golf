@@ -3,9 +3,11 @@
 
 import random
 from termcolor import colored
+import os
 from tabulate import tabulate
 
 HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
+TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
 
 
 class Card:
@@ -44,9 +46,10 @@ class Pile:
         self.cards = cards
 
     def fill_deck(self):
-        self.cards = ([Card("Spades", rank) for rank in range(1, 14)] + [Card("Hearts", rank) for rank in range(1, 14)] +
-                      [Card("Diamonds", rank) for rank in range(1, 14)] + [Card("Clubs", rank) for rank in range(1, 14)] +
-                      [Card("Joker") for _ in range(2)])
+        self.cards = (
+                    [Card("Spades", rank) for rank in range(1, 14)] + [Card("Hearts", rank) for rank in range(1, 14)] +
+                    [Card("Diamonds", rank) for rank in range(1, 14)] + [Card("Clubs", rank) for rank in range(1, 14)] +
+                    [Card("Joker") for _ in range(2)])
 
     def append_card(self, card):
         self.cards.append(card)
@@ -104,6 +107,22 @@ class Hand:
         return score
 
 
+# get an input as an int and check it is between two values
+def input_range(message, int_min, int_max):
+    while True:
+        answer = input(message)
+        if not answer.isdigit() or not (int_min <= int(answer) <= int_max):
+            print("Invalid input, try again.")
+        else:
+            return int(answer)
+
+
+# clear all text from the console
+def clear_console():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
+# create and initialise the draw pile and discard pile
 draw_pile = Pile(True)
 draw_pile.fill_deck()
 draw_pile.shuffle()
@@ -111,50 +130,64 @@ draw_pile.shuffle()
 discard_pile = Pile(False)
 discard_pile.append_card(draw_pile.remove_top())
 
-print("GOLF.PY - by Freddie Rayner\nWelcome Human. Are you ready to play? I will let you go first...\n")
+# print some stuff :)
+clear_console()
+print(TITLE_TEXT)
+input("\nWelcome Human. Are you ready to play? ")
+print()
 
+# create the player hand and flip over 2 cards
 player_hand = Hand(draw_pile)
+
+print("Before the game starts, you must turn over two cards. Please enter the row and column of the first card.")
+turn_row_1 = input_range(">> Row [0-1]: ", 0, 1)
+turn_column_1 = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
+
+print("Now please enter the row and column of the second card.")
+while True:
+    turn_row_2 = input_range(">> Row [0-1]: ", 0, 1)
+    turn_column_2 = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
+    if turn_row_2 == turn_row_1 and turn_column_2 == turn_column_1:
+        print("A different card must be selected. Please try again.")
+    else:
+        break
+
+player_hand.face_up[turn_row_1][turn_column_1] = True
+player_hand.face_up[turn_row_2][turn_column_2] = True
+
+# create and initialise the bot
 computer_hand = Hand(draw_pile)
 
-while True:
-    turn_row = input(">> In what row is the first card to turn over [0-1]? ")
-    turn_column = input(f">> What column is this card [0-{player_hand.width - 1}]? ")
-    if not turn_row.isdigit() or not turn_column.isdigit() or not (0 <= int(turn_row) <= 1) or not (
-            0 <= int(turn_column) <= player_hand.width - 1):
-        print("Invalid input, try again.")
-        continue
-    else:
-        player_hand.face_up[int(turn_row)][int(turn_column)] = True
-        break
-
-while True:
-    turn_row = input(">> In what row is the second card to turn over [0-1]? ")
-    turn_column = input(f">> What column is this card [0-{player_hand.width - 1}]? ")
-    if not turn_row.isdigit() or not turn_column.isdigit() or not (0 <= int(turn_row) <= 1) or not (
-            0 <= int(turn_column) <= player_hand.width - 1):
-        print("Invalid input, try again.")
-        continue
-    else:
-        player_hand.face_up[int(turn_row)][int(turn_column)] = True
-        break
-
+# main loop
 game_over = False
 while not game_over:
-    draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid", stralign="center").splitlines()
-    discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid", stralign="center").splitlines()
-    print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})", "dark_grey"))
+    # make it pretty :)
+    clear_console()
+    print(TITLE_TEXT + "\n")
+
+    # render the current state of the game (decks, hands)
+    draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid",
+                                stralign="center").splitlines()
+    discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid",
+                                   stralign="center").splitlines()
+    print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})",
+                                                                    "dark_grey"))
 
     for line in range(len(draw_pile_render)):
-        print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(discard_pile_render[line], "dark_grey"))
+        print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(
+            discard_pile_render[line], "dark_grey"))
 
     player_hand_render = player_hand.render()
     computer_hand_render = computer_hand.render()
 
-    print(colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
+    print(
+        colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
     for line in range(len(player_hand_render)):
-        print(colored(player_hand_render[line], "white")+ "    " + colored(computer_hand_render[line], "blue"))
+        print(colored(player_hand_render[line], "white") + "    " + colored(computer_hand_render[line], "blue"))
 
     print()
+    # the player chooses which pile to take from
+    # we need to check the pile isn't empty!
     while True:
         player_turn = input(">> Its your turn! Draw from the draw pile [0] or discard pile [1]? ")
         if not player_turn.isdigit() or int(player_turn) not in (0, 1):
@@ -173,23 +206,21 @@ while not game_over:
             draw_card = discard_pile.remove_top()
         break
 
-    print(f"\nYou drew: {draw_card.create_string()}")
+    print(colored(f"\nYou drew: {draw_card.create_string()}", "green"))
 
     take = input(">> Do you want this card [y/n]? ").lower()
     print()
     if take == "y":
-        temp_card = None
-        while True:
-            place_row = input(">> What row do you want to place this card [0-1]? ")
-            place_column = input(f">> What column do you want to place this card [0-{player_hand.width - 1}]? ")
-            if not place_row.isdigit() or not place_column.isdigit() or not (0 <= int(place_row) <= 1) or not (0 <= int(place_column) <= player_hand.width - 1):
-                print("Invalid input, try again.")
-                continue
-            else:
-                temp_card = player_hand.cards[int(place_row)][int(place_column)]
-                player_hand.cards[int(place_row)][int(place_column)] = draw_card
-                discard_pile.add_to_top(temp_card)
-                break
+        # replace the card in their hand with the card they picked up
+        print("Please enter the row and column to place this card.")
+        place_row = input_range(">> Row [0-1]: ", 0, 1)
+        place_column = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
+
+        # place the old card on the discard pile
+        temp_card = player_hand.cards[place_row][place_column]
+        player_hand.cards[place_row][place_column] = draw_card
+        player_hand.face_up[place_row][place_column] = True
+        discard_pile.add_to_top(temp_card)
 
     else:
         discard_pile.add_to_top(draw_card)
