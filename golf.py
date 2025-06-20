@@ -2,12 +2,16 @@
 # https://github.com/Jefernater58/Golf
 
 import random
+import time
 from termcolor import colored
 import os
 from tabulate import tabulate
 
 HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
 TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
+
+BOT_MAX_TAKE_THRESHOLD = 5  # highest score of a card the bot will pick up from the discard pile, if no better options
+BOT_MAX_LOSING_TAKE_THRESHOLD = 3
 
 
 class Card:
@@ -113,11 +117,113 @@ class Computer:
         self.hand = hand
         self.skill = skill
 
+    def initialise_hand(self):
+        self.hand.face_up[0][0] = True
+        self.hand.face_up[1][2] = True
+
     def calculate_turn(self, player_h, discard_p):
         current_score = self.hand.calculate_score()
         current_player_score = player_h.calculate_score()
 
+        discard_pile_card = discard_p.cards[0]
         losing = current_score < current_player_score  # oh no! let's play more carefully because i dont wanna lose
+
+        take_pile = -1
+        place_position = 0, 0
+        taking_card = True
+
+        best_difference = 0
+        for i in range(self.hand.width):
+            card_1, card_2 = self.hand.cards[0][i], self.hand.cards[1][i]
+            face_up_1, face_up_2 = self.hand.face_up[0][i], self.hand.face_up[1][i]
+
+            if (face_up_1 and face_up_2 and card_2.rank != card_1.rank) or not face_up_1 or not face_up_2:
+                if card_2.rank != card_1.rank:
+                    # check if the card on the discard pile has the same rank as a card in the computer's hand
+                    if face_up_1 and card_1.rank == discard_pile_card.rank:
+                        # take from discard pile, put in card_2s position
+                        take_pile = 1
+                        place_position = 1, i
+                        break
+                    elif face_up_2 and card_2.rank == discard_pile_card.rank:
+                        # take from discard pile, put in card_1s position
+                        take_pile = 1
+                        place_position = 0, i
+                        break
+
+                    # take from the discard pile if the score is lower than a current card
+                    if face_up_1 and discard_pile_card.score < card_1.score:
+                        # take from discard pile, put in card_1s position
+                        if card_1.score - discard_pile_card.score > best_difference:
+                            take_pile = 1
+                            place_position = 0, i
+                    elif face_up_2 and discard_pile_card.score < card_2.score:
+                        # take from discard pile, put in card_2s position
+                        if card_2.score - discard_pile_card.score > best_difference:
+                            take_pile = 1
+                            place_position = 1, i
+                else:
+                    continue
+
+        if take_pile == -1 and discard_pile_card.score <= (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD):  # no good option found yet
+            for i in range(len(self.hand.face_up)):
+                for j in range(len(self.hand.face_up[i])):
+                    # take from the discard pile if the score is below threshold
+                    if not self.hand.face_up[i][j]:
+                        take_pile = 1
+                        place_position = (i, j)
+
+        elif take_pile == -1:
+            # take from the draw pile
+            draw_pile_card = draw_pile.cards[0]
+
+            # do all the same checks
+            best_difference = 0
+            for i in range(self.hand.width):
+                card_1, card_2 = self.hand.cards[0][i], self.hand.cards[1][i]
+                face_up_1, face_up_2 = self.hand.face_up[0][i], self.hand.face_up[1][i]
+
+                if (face_up_1 and face_up_2 and card_2.rank != card_1.rank) or not face_up_1 or not face_up_2:
+                    if card_2.rank != card_1.rank:
+                        # check if the card on the discard pile has the same rank as a card in the computer's hand
+                        if face_up_1 and card_1.rank == draw_pile_card.rank:
+                            # take from discard pile, put in card_2s position
+                            take_pile = 0
+                            place_position = 1, i
+                            break
+                        elif face_up_2 and card_2.rank == draw_pile_card.rank:
+                            # take from discard pile, put in card_1s position
+                            take_pile = 0
+                            place_position = 0, i
+                            break
+
+                        # take from the discard pile if the score is lower than a current card
+                        if face_up_1 and draw_pile_card.score < card_1.score:
+                            # take from discard pile, put in card_1s position
+                            if card_1.score - draw_pile_card.score > best_difference:
+                                take_pile = 0
+                                place_position = 0, i
+                        elif face_up_2 and draw_pile_card.score < card_2.score:
+                            # take from discard pile, put in card_2s position
+                            if card_2.score - draw_pile_card.score > best_difference:
+                                take_pile = 0
+                                place_position = 1, i
+                    else:
+                        continue
+
+            if take_pile == -1 and draw_pile_card.score <= (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD):  # no good option found yet
+                for i in range(len(self.hand.face_up)):
+                    for j in range(len(self.hand.face_up[i])):
+                        # take from the discard pile if the score is below threshold
+                        if not self.hand.face_up[i][j]:
+                            take_pile = 0
+                            place_position = (i, j)
+
+            elif take_pile == -1:
+                take_pile = 0
+                taking_card = False
+
+        return take_pile, place_position, taking_card
 
 
 # get an input as an int and check it is between two values
@@ -133,6 +239,34 @@ def input_range(message, int_min, int_max):
 # clear all text from the console
 def clear_console():
     os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def render_game_state():
+    # make it pretty :)
+    clear_console()
+    print(TITLE_TEXT + "\n")
+
+    # render the current state of the game (decks, hands)
+    draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid",
+                                stralign="center").splitlines()
+    discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid",
+                                   stralign="center").splitlines()
+    print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})",
+                                                                    "dark_grey"))
+
+    for line in range(len(draw_pile_render)):
+        print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(
+            discard_pile_render[line], "dark_grey"))
+
+    player_hand_render = player_hand.render()
+    computer_hand_render = computer.hand.render()
+
+    print(
+        colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
+    for line in range(len(player_hand_render)):
+        print(colored(player_hand_render[line], "white") + "    " + colored(computer_hand_render[line], "blue"))
+
+    print()
 
 
 # create and initialise the draw pile and discard pile
@@ -171,35 +305,13 @@ player_hand.face_up[turn_row_2][turn_column_2] = True
 # create and initialise the bot
 # i need to make skill levels for dumb players
 computer = Computer(Hand(draw_pile), 0)
+computer.initialise_hand()
 
 # main loop
 game_over = False
 while not game_over:
-    # make it pretty :)
-    clear_console()
-    print(TITLE_TEXT + "\n")
+    render_game_state()
 
-    # render the current state of the game (decks, hands)
-    draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid",
-                                stralign="center").splitlines()
-    discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid",
-                                   stralign="center").splitlines()
-    print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})",
-                                                                    "dark_grey"))
-
-    for line in range(len(draw_pile_render)):
-        print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(
-            discard_pile_render[line], "dark_grey"))
-
-    player_hand_render = player_hand.render()
-    computer_hand_render = computer_hand.render()
-
-    print(
-        colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
-    for line in range(len(player_hand_render)):
-        print(colored(player_hand_render[line], "white") + "    " + colored(computer_hand_render[line], "blue"))
-
-    print()
     # the player chooses which pile to take from
     # we need to check the pile isn't empty!
     while True:
@@ -239,4 +351,29 @@ while not game_over:
     else:
         discard_pile.add_to_top(draw_card)
 
+    render_game_state()
+
     # computer's go now!
+    print("[COMPUTER] Its my turn now!")
+    computer_turn = computer.calculate_turn(player_hand, discard_pile)
+    time.sleep(1)
+    print("[COMPUTER] hmmm...")
+    time.sleep(2)
+    if computer_turn[0] == 0:
+        print("[COMPUTER] I'll take my chances with the draw pile.")
+        computer_take_card = draw_pile.remove_top()
+    else:
+        print("[COMPUTER] I'll take this card from the discard pile.")
+        computer_take_card = discard_pile.remove_top()
+    time.sleep(3)
+    if not computer_turn[2]:
+        print("[COMPUTER] I don't want this card, I'll put it on the discard pile.")
+        discard_pile.add_to_top(computer_take_card)
+    else:
+        r, c = computer_turn[1]
+        print(f"[COMPUTER] Ok, I'll take this card and put it on row {r}, column {c}")
+        discard_pile.add_to_top(computer.hand.cards[r][c])
+        computer.hand.cards[r][c] = computer_take_card
+        computer.hand.face_up[r][c] = True
+
+    input("\n>> Press [RETURN] to continue: ")
