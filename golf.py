@@ -409,7 +409,7 @@ while True:
         discard_pile.add_to_top(computer_take_card)
     else:
         r, c = computer_turn[1]
-        print(f"[COMPUTER] Ok, I'll take this card and put it on row {r}, column {c}")
+        print(f"[COMPUTER] Ok, I'll take this card and place it at {ALPHABET[c]}{r + 1}")
         discard_pile.add_to_top(computer.hand.cards[r][c])
         computer.hand.cards[r][c] = computer_take_card
         computer.hand.face_up[r][c] = True
