@@ -255,13 +255,6 @@ def render_game_state():
     clear_console()
     print(TITLE_TEXT + "\n")
 
-    # render the current state of the game (decks, hands)
-    print(f"DRAW PILE ({draw_pile.get_size()} cards)          " + colored(
-        f"DISCARD PILE ({discard_pile.get_size()} cards)",
-        "dark_grey"))
-    print(tabulate([[draw_pile.create_top_card_string().replace("\n", "               \n"),
-                     discard_pile.create_top_card_string()]], tablefmt="plain"))
-
     player_hand_render = player_hand.render()
     computer_hand_render = computer.hand.render()
 
@@ -271,6 +264,14 @@ def render_game_state():
         print(player_hand_render[line] + "    " + computer_hand_render[line])
 
     print()
+
+
+def render_piles():
+    print(f"DRAW PILE ({draw_pile.get_size()} cards)          " + colored(
+        f"DISCARD PILE ({discard_pile.get_size()} cards)",
+        "dark_grey"))
+    print(tabulate([[draw_pile.create_top_card_string().replace("\n", "               \n"),
+                     discard_pile.create_top_card_string()]], tablefmt="plain"))
 
 
 # create and initialise the draw pile and discard pile
@@ -315,6 +316,7 @@ computer.initialise_hand()
 game_over = False
 while True:
     render_game_state()
+    render_piles()
 
     # the player chooses which pile to take from
     # we need to check the pile isn't empty!
@@ -338,7 +340,8 @@ while True:
             draw_card = discard_pile.remove_top()
         break
 
-    print(colored(f"\nYou drew: {draw_card.create_string()}", "green"))
+    render_game_state()
+    print(colored(f"You drew:\n{draw_card.create_string()}", "green"))
 
     take = input(">> Do you want this card [y/n]? ").lower()
     print()
@@ -358,6 +361,7 @@ while True:
         discard_pile.add_to_top(draw_card)
 
     render_game_state()
+    render_piles()
 
     if game_over:
         break
