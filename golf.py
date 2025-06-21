@@ -11,7 +11,11 @@ HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
 TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
 
 BOT_MAX_TAKE_THRESHOLD = 5  # highest score of a card the bot will pick up from the discard pile, if no better options
-BOT_MAX_LOSING_TAKE_THRESHOLD = 3
+BOT_MAX_TAKE_EARLY_GAME_THRESHOLD = 6
+BOT_MAX_LOSING_TAKE_THRESHOLD = 4
+BOT_MIN_SWAP_DIFFERENCE = 3  # the minimum difference between a card and a card in the hand to swap them
+BOT_MIN_SWAP_EARLY_GAME_DIFFERENCE = 5
+BOT_EARLY_GAME_NUM_FACE_UP = 3  # the number of face-up cards consider it to be early game
 
 
 class Card:
@@ -51,9 +55,9 @@ class Pile:
 
     def fill_deck(self):
         self.cards = (
-                    [Card("Spades", rank) for rank in range(1, 14)] + [Card("Hearts", rank) for rank in range(1, 14)] +
-                    [Card("Diamonds", rank) for rank in range(1, 14)] + [Card("Clubs", rank) for rank in range(1, 14)] +
-                    [Card("Joker") for _ in range(2)])
+                [Card("Spades", rank) for rank in range(1, 14)] + [Card("Hearts", rank) for rank in range(1, 14)] +
+                [Card("Diamonds", rank) for rank in range(1, 14)] + [Card("Clubs", rank) for rank in range(1, 14)] +
+                [Card("Joker") for _ in range(2)])
 
     def append_card(self, card):
         self.cards.append(card)
@@ -111,6 +115,14 @@ class Hand:
                 score += c2.score if self.face_up[1][card] else 0
         return score
 
+    def get_num_face_up(self):
+        total = 0
+        for row in range(2):
+            for card in self.face_up[row]:
+                total += 1 if card else 0
+
+        return total
+
 
 class Computer:
     def __init__(self, hand, skill):
@@ -121,106 +133,78 @@ class Computer:
         self.hand.face_up[0][0] = True
         self.hand.face_up[1][2] = True
 
-    def calculate_turn(self, player_h, discard_p):
-        current_score = self.hand.calculate_score()
-        current_player_score = player_h.calculate_score()
-
-        discard_pile_card = discard_p.cards[0]
-        losing = current_score < current_player_score  # oh no! let's play more carefully because i dont wanna lose
-
-        take_pile = -1
-        place_position = 0, 0
-        taking_card = True
+    def best_move(self, card, losing):
+        place_position = -1, -1
 
         best_difference = 0
+        match_found = False
         for i in range(self.hand.width):
             card_1, card_2 = self.hand.cards[0][i], self.hand.cards[1][i]
             face_up_1, face_up_2 = self.hand.face_up[0][i], self.hand.face_up[1][i]
 
             if (face_up_1 and face_up_2 and card_2.rank != card_1.rank) or not face_up_1 or not face_up_2:
-                if card_2.rank != card_1.rank:
-                    # check if the card on the discard pile has the same rank as a card in the computer's hand
-                    if face_up_1 and card_1.rank == discard_pile_card.rank:
-                        # take from discard pile, put in card_2s position
-                        take_pile = 1
-                        place_position = 1, i
-                        break
-                    elif face_up_2 and card_2.rank == discard_pile_card.rank:
-                        # take from discard pile, put in card_1s position
-                        take_pile = 1
-                        place_position = 0, i
-                        break
+                # check if the card on the discard pile has the same rank as a card in the computer's hand
+                if face_up_1 and card_1.rank == card.rank:
+                    # take from discard pile, put in card_2s position
+                    place_position = 1, i
+                    match_found = True
+                    break
+                elif face_up_2 and card_2.rank == card.rank:
+                    # take from discard pile, put in card_1s position
+                    place_position = 0, i
+                    match_found = True
+                    break
 
-                    # take from the discard pile if the score is lower than a current card
-                    if face_up_1 and discard_pile_card.score < card_1.score:
-                        # take from discard pile, put in card_1s position
-                        if card_1.score - discard_pile_card.score > best_difference:
-                            take_pile = 1
-                            place_position = 0, i
-                    elif face_up_2 and discard_pile_card.score < card_2.score:
-                        # take from discard pile, put in card_2s position
-                        if card_2.score - discard_pile_card.score > best_difference:
-                            take_pile = 1
-                            place_position = 1, i
+                # take from the discard pile if the score is lower than a current card
+                if face_up_1 and card.score < card_1.score:
+                    # take from discard pile, put in card_1s position
+                    if card_1.score - card.score > best_difference:
+                        best_difference = card_1.score - card.score
+                        place_position = 0, i
+                elif face_up_2 and card.score < card_2.score:
+                    # take from discard pile, put in card_2s position
+                    if card_2.score - card.score > best_difference:
+                        best_difference = card_2.score - card.score
+                        place_position = 1, i
                 else:
                     continue
 
-        if take_pile == -1 and discard_pile_card.score <= (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD):  # no good option found yet
+        print(card.create_string(), place_position, best_difference, match_found)
+
+        face_up_cards = self.hand.get_num_face_up()
+        swap_difference = BOT_MIN_SWAP_DIFFERENCE if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MIN_SWAP_EARLY_GAME_DIFFERENCE
+        if not match_found and best_difference < swap_difference:
+            place_position = -1, -1
+
+        max_take = (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD) if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MAX_TAKE_EARLY_GAME_THRESHOLD
+        if place_position == (-1, -1) and card.score <= max_take:  # no good option found yet
             for i in range(len(self.hand.face_up)):
                 for j in range(len(self.hand.face_up[i])):
                     # take from the discard pile if the score is below threshold
                     if not self.hand.face_up[i][j]:
-                        take_pile = 1
                         place_position = (i, j)
 
-        elif take_pile == -1:
+        return place_position
+
+    def calculate_turn(self, player_h, discard_p, draw_p):
+        current_score = self.hand.calculate_score()
+        current_player_score = player_h.calculate_score()
+
+        losing = current_score < current_player_score  # oh no! let's play more carefully because i dont wanna lose
+
+        taking_card = True
+
+        place_position = self.best_move(discard_p.cards[0], losing)
+        if place_position != (-1, -1):
+            take_pile = 1
+
+        else:
             # take from the draw pile
-            draw_pile_card = draw_pile.cards[0]
+            take_pile = 0
 
-            # do all the same checks
-            best_difference = 0
-            for i in range(self.hand.width):
-                card_1, card_2 = self.hand.cards[0][i], self.hand.cards[1][i]
-                face_up_1, face_up_2 = self.hand.face_up[0][i], self.hand.face_up[1][i]
+            place_position = self.best_move(draw_p.cards[0], losing)
 
-                if (face_up_1 and face_up_2 and card_2.rank != card_1.rank) or not face_up_1 or not face_up_2:
-                    if card_2.rank != card_1.rank:
-                        # check if the card on the discard pile has the same rank as a card in the computer's hand
-                        if face_up_1 and card_1.rank == draw_pile_card.rank:
-                            # take from discard pile, put in card_2s position
-                            take_pile = 0
-                            place_position = 1, i
-                            break
-                        elif face_up_2 and card_2.rank == draw_pile_card.rank:
-                            # take from discard pile, put in card_1s position
-                            take_pile = 0
-                            place_position = 0, i
-                            break
-
-                        # take from the discard pile if the score is lower than a current card
-                        if face_up_1 and draw_pile_card.score < card_1.score:
-                            # take from discard pile, put in card_1s position
-                            if card_1.score - draw_pile_card.score > best_difference:
-                                take_pile = 0
-                                place_position = 0, i
-                        elif face_up_2 and draw_pile_card.score < card_2.score:
-                            # take from discard pile, put in card_2s position
-                            if card_2.score - draw_pile_card.score > best_difference:
-                                take_pile = 0
-                                place_position = 1, i
-                    else:
-                        continue
-
-            if take_pile == -1 and draw_pile_card.score <= (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD):  # no good option found yet
-                for i in range(len(self.hand.face_up)):
-                    for j in range(len(self.hand.face_up[i])):
-                        # take from the discard pile if the score is below threshold
-                        if not self.hand.face_up[i][j]:
-                            take_pile = 0
-                            place_position = (i, j)
-
-            elif take_pile == -1:
-                take_pile = 0
+            if place_position == (-1, -1):
                 taking_card = False
 
         return take_pile, place_position, taking_card
@@ -355,7 +339,7 @@ while not game_over:
 
     # computer's go now!
     print("[COMPUTER] Its my turn now!")
-    computer_turn = computer.calculate_turn(player_hand, discard_pile)
+    computer_turn = computer.calculate_turn(player_hand, discard_pile, draw_pile)
     time.sleep(1)
     print("[COMPUTER] hmmm...")
     time.sleep(2)
