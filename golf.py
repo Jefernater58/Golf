@@ -19,31 +19,62 @@ BOT_EARLY_GAME_NUM_FACE_UP = 3  # the number of face-up cards consider it to be 
 
 
 class Card:
-    def __init__(self, suit, value=-1):
+    def __init__(self, suit, rank=-1):
         self.suit = suit
-        self.rank = value
+        self.rank = rank
 
         self.score = -1
-        if suit == "joker":
+        if suit == "Joker":
             self.score = -2
-        elif 1 <= value <= 10:
-            self.score = value
-        elif value <= 12:
+        elif 1 <= rank <= 10:
+            self.score = rank
+        elif rank <= 12:
             self.score = 10
-        elif value == 13:
+        elif rank == 13:
             self.score = 0
         else:
             print(f"error: card rank is invalid: {self.rank}, {self.suit}")
 
-    def create_string(self):
+    def create_string(self, hidden=False):
+        colour = "white"
+        if not hidden:
+            if self.suit in ("Diamonds", "Hearts"):
+                colour = "red"
+            else:
+                colour = "dark_grey"
+
+        if hidden:
+            return (colored("┏━━━━━━━━━━━┓\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┃░░░░░░░░░░░┃\n", colour) +
+                    colored("┗━━━━━━━━━━━┛", colour))
+
         if self.suit == "Joker":
-            return "Joker"
+            name_string = "Joker"
+            suit_string = ""
+        else:
+            ranks = {1: "A", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10",
+                     11: "J", 12: "Q", 13: "K"}
+            name_string = ranks[self.rank]
 
-        value_names = {11: "Jack", 12: "Queen", 13: "King", 1: "Ace"}
+            suits = {"Spades": "♠", "Hearts": "♥", "Diamonds": "♦", "Clubs": "♣"}
 
-        if 2 <= self.rank <= 10:
-            return f"{self.rank} of {self.suit}"
-        return f"{value_names[self.rank]} of {self.suit}"
+            suit_string = suits[self.suit]
+
+        return (colored("┏━━━━━━━━━━━┓\n", colour) +
+                colored(f"┃{name_string.ljust(11)}┃\n", colour) +
+                colored("┃           ┃\n", colour) +
+                colored("┃           ┃\n", colour) +
+                colored(f"┃{suit_string.center(11)}┃\n", colour) +
+                colored("┃           ┃\n", colour) +
+                colored("┃           ┃\n", colour) +
+                colored(f"┃{name_string.rjust(11)}┃\n", colour) +
+                colored("┗━━━━━━━━━━━┛\n", colour))
 
 
 class Pile:
@@ -76,9 +107,7 @@ class Pile:
 
     def create_top_card_string(self):
         if len(self.cards) > 0:
-            if self.hidden:
-                return "Hidden Card"
-            return self.cards[0].create_string()
+            return self.cards[0].create_string(self.hidden)
         else:
             return "Empty"
 
@@ -96,12 +125,9 @@ class Hand:
         render_array = [["" for _ in range(self.width)] for _ in range(2)]
         for row in range(2):
             for card in range(self.width):
-                if self.face_up[row][card]:
-                    render_array[row][card] = self.cards[row][card].create_string()
-                else:
-                    render_array[row][card] = "Hidden Card"
+                render_array[row][card] = self.cards[row][card].create_string(not self.face_up[row][card])
 
-        return tabulate(render_array, tablefmt="simple_grid", stralign="center").splitlines()
+        return tabulate(render_array, tablefmt="plain", stralign="center").splitlines()
 
     def calculate_score(self):
         score = 0
@@ -169,14 +195,13 @@ class Computer:
                 else:
                     continue
 
-        print(card.create_string(), place_position, best_difference, match_found)
-
         face_up_cards = self.hand.get_num_face_up()
         swap_difference = BOT_MIN_SWAP_DIFFERENCE if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MIN_SWAP_EARLY_GAME_DIFFERENCE
         if not match_found and best_difference < swap_difference:
             place_position = -1, -1
 
-        max_take = (BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD) if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MAX_TAKE_EARLY_GAME_THRESHOLD
+        max_take = (
+            BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD) if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MAX_TAKE_EARLY_GAME_THRESHOLD
         if place_position == (-1, -1) and card.score <= max_take:  # no good option found yet
             for i in range(len(self.hand.face_up)):
                 for j in range(len(self.hand.face_up[i])):
@@ -231,24 +256,19 @@ def render_game_state():
     print(TITLE_TEXT + "\n")
 
     # render the current state of the game (decks, hands)
-    draw_pile_render = tabulate([[draw_pile.create_top_card_string()]], tablefmt="simple_grid",
-                                stralign="center").splitlines()
-    discard_pile_render = tabulate([[discard_pile.create_top_card_string()]], tablefmt="simple_grid",
-                                   stralign="center").splitlines()
-    print(f"DRAW PILE ({draw_pile.get_size()} cards)    " + colored(f"DISCARD PILE ({discard_pile.get_size()})",
-                                                                    "dark_grey"))
-
-    for line in range(len(draw_pile_render)):
-        print(draw_pile_render[line].ljust(len(f"DRAW PILE ({draw_pile.get_size()} cards)    ")) + colored(
-            discard_pile_render[line], "dark_grey"))
+    print(f"DRAW PILE ({draw_pile.get_size()} cards)          " + colored(
+        f"DISCARD PILE ({discard_pile.get_size()} cards)",
+        "dark_grey"))
+    print(tabulate([[draw_pile.create_top_card_string().replace("\n", "               \n"),
+                     discard_pile.create_top_card_string()]], tablefmt="plain"))
 
     player_hand_render = player_hand.render()
     computer_hand_render = computer.hand.render()
 
     print(
-        colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[0]) + 13) + colored(" COMPUTER'S CARDS", "blue"))
+        colored("\nYOUR CARDS", "white").ljust(len(player_hand_render[0]) - 2) + colored(" COMPUTER'S CARDS", "blue"))
     for line in range(len(player_hand_render)):
-        print(colored(player_hand_render[line], "white") + "    " + colored(computer_hand_render[line], "blue"))
+        print(player_hand_render[line] + "    " + computer_hand_render[line])
 
     print()
 
@@ -293,11 +313,13 @@ computer.initialise_hand()
 
 # main loop
 game_over = False
-while not game_over:
+while True:
     render_game_state()
 
     # the player chooses which pile to take from
     # we need to check the pile isn't empty!
+    if game_over:
+        print(colored("All of the computer's cards are now face-up! The game will end after this turn.", "red"))
     while True:
         player_turn = input(">> Its your turn! Draw from the draw pile [0] or discard pile [1]? ")
         if not player_turn.isdigit() or int(player_turn) not in (0, 1):
@@ -337,6 +359,12 @@ while not game_over:
 
     render_game_state()
 
+    if game_over:
+        break
+    if player_hand.get_num_face_up() == HAND_SIZE:
+        print(colored("All your cards are now face-up! The game will end after the computer's last turn.", "red"))
+        game_over = True
+
     # computer's go now!
     print("[COMPUTER] Its my turn now!")
     computer_turn = computer.calculate_turn(player_hand, discard_pile, draw_pile)
@@ -361,3 +389,32 @@ while not game_over:
         computer.hand.face_up[r][c] = True
 
     input("\n>> Press [RETURN] to continue: ")
+
+    if game_over:
+        break
+    if computer.hand.get_num_face_up() == HAND_SIZE:
+        game_over = True
+
+for row in range(2):
+    for column in range(player_hand.width):
+        player_hand.face_up[row][column] = True
+        computer.hand.face_up[row][column] = True
+
+render_game_state()
+
+player_score = player_hand.calculate_score()
+computer_score = computer.hand.calculate_score()
+
+input(">> The game has ended! Press [RETURN] to see the results: ")
+
+print(f"\nYou scored {player_score}")
+print(colored(f"The computer scored {computer_score}\n", "blue"))
+
+if player_score < computer_score:
+    print(colored("YOU WIN", "green"))
+elif computer_score < player_score:
+    print(colored("YOU LOSE", "red"))
+else:
+    print("DRAW", "yellow")
+
+print("Thank you for playing :)")
