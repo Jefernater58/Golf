@@ -4,7 +4,7 @@ Golf is a multiplayer card game in which every player competes to finish with th
 
 ## Install
 1. Download `golf.py` from the latest release.
-2. Install necessary modules `pip install tabulate`, `pip install termcolor`, `pip install terminal_playing_cards`
+2. Install necessary modules `pip install tabulate`, `pip install termcolor`
 3. Run with python `python3 golf.py`
 
 ## How to play
