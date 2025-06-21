@@ -7,7 +7,8 @@ from termcolor import colored
 import os
 from tabulate import tabulate
 
-HAND_SIZE = 6  # number of cards a player has. MUST BE EVEN!!!
+HAND_SIZE = 6  # number of cards a player has. Max 26. MUST BE EVEN!!!
+ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
 
 BOT_MAX_TAKE_THRESHOLD = 5  # highest score of a card the bot will pick up from the discard pile, if no better options
@@ -74,7 +75,7 @@ class Card:
                 colored("┃           ┃\n", colour) +
                 colored("┃           ┃\n", colour) +
                 colored(f"┃{name_string.rjust(11)}┃\n", colour) +
-                colored("┗━━━━━━━━━━━┛\n", colour))
+                colored("┗━━━━━━━━━━━┛", colour))
 
 
 class Pile:
@@ -122,12 +123,13 @@ class Hand:
                 self.cards[row][card] = draw_p.remove_top()
 
     def render(self):
-        render_array = [["" for _ in range(self.width)] for _ in range(2)]
+        render_array = [["" for _ in range(self.width + 1)] for _ in range(2)]
         for row in range(2):
+            render_array[row][0] = "\n\n\n\n" + colored(str(row + 1), "white")
             for card in range(self.width):
-                render_array[row][card] = self.cards[row][card].create_string(not self.face_up[row][card])
+                render_array[row][card + 1] = self.cards[row][card].create_string(not self.face_up[row][card])
 
-        return tabulate(render_array, tablefmt="plain", stralign="center").splitlines()
+        return tabulate(render_array, tablefmt="plain", stralign="center", headers=[ALPHABET[i] for i in range(self.width)]).splitlines()
 
     def calculate_score(self):
         score = 0
@@ -245,6 +247,26 @@ def input_range(message, int_min, int_max):
             return int(answer)
 
 
+def input_2d(message, row_max, col_max):
+    while True:
+        answer = input(message)
+        if answer[0].upper() not in ALPHABET:
+            print("Invalid input, try again.")
+            continue
+        answer_col = ALPHABET.index(answer[0].upper())
+        if not answer[1].isdigit():
+            print("Invalid input, try again.")
+            continue
+        answer_row = int(answer[1]) - 1
+
+        if not (0 <= answer_row <= row_max) or not (0 <= answer_col < col_max):
+            print("Invalid input, try again.")
+            continue
+
+        return answer_row, answer_col
+    return None
+
+
 # clear all text from the console
 def clear_console():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -253,25 +275,22 @@ def clear_console():
 def render_game_state():
     # make it pretty :)
     clear_console()
-    print(TITLE_TEXT + "\n")
 
     player_hand_render = player_hand.render()
     computer_hand_render = computer.hand.render()
 
-    print(
-        colored("\nYOUR CARDS", "white").ljust(len(player_hand_render[0]) - 2) + colored(" COMPUTER'S CARDS", "blue"))
+    print(colored("\n YOUR CARDS", "white").ljust(len(player_hand_render[1]) + 2) + colored(" COMPUTER'S CARDS\n", "blue"))
     for line in range(len(player_hand_render)):
-        print(player_hand_render[line] + "    " + computer_hand_render[line])
+        print(player_hand_render[line] + ("        " if line != 0 else "              ") + computer_hand_render[line])
 
-    print()
+    print("\033[0m\n")
 
 
 def render_piles():
-    print(f"DRAW PILE ({draw_pile.get_size()} cards)          " + colored(
-        f"DISCARD PILE ({discard_pile.get_size()} cards)",
-        "dark_grey"))
+    print(colored(f"DRAW PILE ({draw_pile.get_size()} cards)          DISCARD PILE ({discard_pile.get_size()} cards)", "white"))
     print(tabulate([[draw_pile.create_top_card_string().replace("\n", "               \n"),
                      discard_pile.create_top_card_string()]], tablefmt="plain"))
+    print("\033[0m\n")
 
 
 # create and initialise the draw pile and discard pile
@@ -285,32 +304,33 @@ discard_pile.append_card(draw_pile.remove_top())
 # print some stuff :)
 clear_console()
 print(TITLE_TEXT)
-input("\nWelcome Human. Are you ready to play? ")
+input("\nWelcome Human. Are you ready to play? Press [RETURN] to start: ")
 print()
 
-# create the player hand and flip over 2 cards
+# create the player hand
 player_hand = Hand(draw_pile)
-
-print("Before the game starts, you must turn over two cards. Please enter the row and column of the first card.")
-turn_row_1 = input_range(">> Row [0-1]: ", 0, 1)
-turn_column_1 = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
-
-print("Now please enter the row and column of the second card.")
-while True:
-    turn_row_2 = input_range(">> Row [0-1]: ", 0, 1)
-    turn_column_2 = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
-    if turn_row_2 == turn_row_1 and turn_column_2 == turn_column_1:
-        print("A different card must be selected. Please try again.")
-    else:
-        break
-
-player_hand.face_up[turn_row_1][turn_column_1] = True
-player_hand.face_up[turn_row_2][turn_column_2] = True
 
 # create and initialise the bot
 # i need to make skill levels for dumb players
 computer = Computer(Hand(draw_pile), 0)
 computer.initialise_hand()
+
+render_game_state()
+
+print("Before the game starts, you must turn over two cards.")
+turn_row_1, turn_column_1 = input_2d(">> Enter the position of the first card, (e.g., A1): ", 1, player_hand.width)
+player_hand.face_up[turn_row_1][turn_column_1] = True
+
+render_game_state()
+print("Before the game starts, you must turn over two cards.")
+while True:
+    turn_row_2, turn_column_2 = input_2d(">> Enter the position of the second card, (e.g., B2): ", 1, player_hand.width)
+    if turn_row_2 == turn_row_1 and turn_column_2 == turn_column_1:
+        print("A different card must be selected. Please try again.")
+    else:
+        break
+
+player_hand.face_up[turn_row_2][turn_column_2] = True
 
 # main loop
 game_over = False
@@ -341,15 +361,17 @@ while True:
         break
 
     render_game_state()
-    print(colored(f"You drew:\n{draw_card.create_string()}", "green"))
+    print(colored(f"You drew:\n{draw_card.create_string()}\n", "green"))
 
-    take = input(">> Do you want this card [y/n]? ").lower()
+    while True:
+        take = input(">> Do you want to take this card [y/n]? ").lower()
+        if take == "y" or take == "n":
+            break
+        print("Invalid input, try again")
     print()
     if take == "y":
         # replace the card in their hand with the card they picked up
-        print("Please enter the row and column to place this card.")
-        place_row = input_range(">> Row [0-1]: ", 0, 1)
-        place_column = input_range(f">> Column [0-{player_hand.width - 1}]: ", 0, player_hand.width - 1)
+        place_row, place_column = input_2d(">> Enter the position to place this card (e.g., A1): ", 1, player_hand.width)
 
         # place the old card on the discard pile
         temp_card = player_hand.cards[place_row][place_column]
