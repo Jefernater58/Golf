@@ -443,4 +443,4 @@ elif computer_score < player_score:
 else:
     print("DRAW", "yellow")
 
-print("Thank you for playing :)")
+print()
