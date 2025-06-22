@@ -4,6 +4,7 @@
 import random
 import time
 from termcolor import colored
+import random
 import os
 from tabulate import tabulate
 
@@ -11,12 +12,10 @@ HAND_SIZE = 6  # number of cards a player has. Max 26. MUST BE EVEN!!!
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
 
-BOT_MAX_TAKE_THRESHOLD = 5  # highest score of a card the bot will pick up from the discard pile, if no better options
-BOT_MAX_TAKE_EARLY_GAME_THRESHOLD = 6
-BOT_MAX_LOSING_TAKE_THRESHOLD = 4
-BOT_MIN_SWAP_DIFFERENCE = 3  # the minimum difference between a card and a card in the hand to swap them
-BOT_MIN_SWAP_EARLY_GAME_DIFFERENCE = 5
-BOT_EARLY_GAME_NUM_FACE_UP = 3  # the number of face-up cards consider it to be early game
+BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE = 3
+BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE = 0
+BOT_ACCEPTABLE_SCORE_EARLY_GAME_DIFFERENCE = -4
+BOT_EARLY_GAME_NUM_FACE_UP = 3
 
 
 class Card:
@@ -161,80 +160,99 @@ class Computer:
         self.hand.face_up[0][0] = True
         self.hand.face_up[1][2] = True
 
-    def best_move(self, card, losing):
-        place_position = -1, -1
-
-        best_difference = 0
-        match_found = False
-        for i in range(self.hand.width):
-            card_1, card_2 = self.hand.cards[0][i], self.hand.cards[1][i]
-            face_up_1, face_up_2 = self.hand.face_up[0][i], self.hand.face_up[1][i]
-
-            if (face_up_1 and face_up_2 and card_2.rank != card_1.rank) or not face_up_1 or not face_up_2:
-                # check if the card on the discard pile has the same rank as a card in the computer's hand
-                if face_up_1 and card_1.rank == card.rank:
-                    # take from discard pile, put in card_2s position
-                    place_position = 1, i
-                    match_found = True
-                    break
-                elif face_up_2 and card_2.rank == card.rank:
-                    # take from discard pile, put in card_1s position
-                    place_position = 0, i
-                    match_found = True
-                    break
-
-                # take from the discard pile if the score is lower than a current card
-                if face_up_1 and card.score < card_1.score:
-                    # take from discard pile, put in card_1s position
-                    if card_1.score - card.score > best_difference:
-                        best_difference = card_1.score - card.score
-                        place_position = 0, i
-                elif face_up_2 and card.score < card_2.score:
-                    # take from discard pile, put in card_2s position
-                    if card_2.score - card.score > best_difference:
-                        best_difference = card_2.score - card.score
-                        place_position = 1, i
-                else:
-                    continue
-
-        face_up_cards = self.hand.get_num_face_up()
-        swap_difference = BOT_MIN_SWAP_DIFFERENCE if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MIN_SWAP_EARLY_GAME_DIFFERENCE
-        if not match_found and best_difference < swap_difference:
-            place_position = -1, -1
-
-        max_take = (
-            BOT_MAX_LOSING_TAKE_THRESHOLD if losing else BOT_MAX_TAKE_THRESHOLD) if face_up_cards > BOT_EARLY_GAME_NUM_FACE_UP else BOT_MAX_TAKE_EARLY_GAME_THRESHOLD
-        if place_position == (-1, -1) and card.score <= max_take:  # no good option found yet
-            for i in range(len(self.hand.face_up)):
-                for j in range(len(self.hand.face_up[i])):
-                    # take from the discard pile if the score is below threshold
-                    if not self.hand.face_up[i][j]:
-                        place_position = (i, j)
-
-        return place_position
-
     def calculate_turn(self, player_h, discard_p, draw_p):
         current_score = self.hand.calculate_score()
         current_player_score = player_h.calculate_score()
 
-        losing = current_score < current_player_score  # oh no! let's play more carefully because i dont wanna lose
+        losing = current_score < current_player_score
 
-        taking_card = True
+        possible_moves = []  # (take_pile, place_position, score_difference, replaces_face_up)
 
-        place_position = self.best_move(discard_p.cards[0], losing)
-        if place_position != (-1, -1):
-            take_pile = 1
+        # find the move with the lowest score from the discard pile
+        discard_pile_top = discard_p.cards[0]
+        initial_score = self.hand.calculate_score()
+        for i in range(2):
+            for j in range(self.hand.width):
+                temp_c = self.hand.cards[i][j]
+                self.hand.cards[i][j] = discard_pile_top
+                temp_face_up = self.hand.face_up[i][j]
+                self.hand.face_up[i][j] = True
+                score_difference = initial_score - self.hand.calculate_score()
+                self.hand.face_up[i][j] = temp_face_up
+                self.hand.cards[i][j] = temp_c
+                possible_moves.append((1, (i, j), score_difference, self.hand.face_up[i][j]))
 
+        # remove all the bad ones
+        best_face_up_moves = []
+        best_face_down_moves = []
+        highest_face_up_difference = 0  # i dont wanna replace a face-up card with a higher card
+        highest_face_down_difference = -999
+        for move in possible_moves:
+            if move[3]:
+                if move[2] > highest_face_up_difference:
+                    best_face_up_moves = [move]
+                    highest_face_up_difference = move[2]
+                elif move[2] == highest_face_up_difference:
+                    best_face_up_moves.append(move)
+            else:
+                if move[2] > highest_face_down_difference:
+                    best_face_down_moves = [move]
+                    highest_face_down_difference = move[2]
+                elif move[2] == highest_face_down_difference:
+                    best_face_down_moves.append(move)
+
+        if highest_face_down_difference >= BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE:
+            chosen_move = random.choice(best_face_down_moves)
+            return chosen_move[0], chosen_move[1], True
+        elif highest_face_up_difference >= BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE:
+            chosen_move = random.choice(best_face_up_moves)
+            return chosen_move[0], chosen_move[1], True
+
+        # now lets do the same for the draw pile!
+        possible_moves = []  # (take_pile, place_position, score_difference, replaces_face_up)
+
+        # find the move with the lowest score from the discard pile
+        draw_pile_top = draw_p.cards[0]
+        initial_score = self.hand.calculate_score()
+        for i in range(2):
+            for j in range(self.hand.width):
+                temp_c = self.hand.cards[i][j]
+                self.hand.cards[i][j] = draw_pile_top
+                temp_face_up = self.hand.face_up[i][j]
+                self.hand.face_up[i][j] = True
+                score_difference = initial_score - self.hand.calculate_score()
+                self.hand.face_up[i][j] = temp_face_up
+                self.hand.cards[i][j] = temp_c
+                possible_moves.append((0, (i, j), score_difference, self.hand.face_up[i][j]))
+
+        # remove all the bad ones
+        best_face_up_moves = []
+        best_face_down_moves = []
+        highest_face_up_difference = 0  # i dont wanna replace a face-up card with a higher card
+        highest_face_down_difference = -999
+        for move in possible_moves:
+            if move[3]:
+                if move[2] > highest_face_up_difference:
+                    best_face_up_moves = [move]
+                    highest_face_up_difference = move[2]
+                elif move[2] == highest_face_up_difference:
+                    best_face_up_moves.append(move)
+            else:
+                if move[2] > highest_face_down_difference:
+                    best_face_down_moves = [move]
+                    highest_face_down_difference = move[2]
+                elif move[2] == highest_face_down_difference:
+                    best_face_down_moves.append(move)
+
+        early_game = self.hand.get_num_face_up() <= BOT_EARLY_GAME_NUM_FACE_UP
+        if (early_game and highest_face_down_difference > BOT_ACCEPTABLE_SCORE_EARLY_GAME_DIFFERENCE) or highest_face_down_difference >= BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE:
+            chosen_move = random.choice(best_face_down_moves)
+            return chosen_move[0], chosen_move[1], True
+        elif highest_face_up_difference >= BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE:
+            chosen_move = random.choice(best_face_up_moves)
+            return chosen_move[0], chosen_move[1], True
         else:
-            # take from the draw pile
-            take_pile = 0
-
-            place_position = self.best_move(draw_p.cards[0], losing)
-
-            if place_position == (-1, -1):
-                taking_card = False
-
-        return take_pile, place_position, taking_card
+            return 0, (0, 0), False
 
 
 # get an input as an int and check it is between two values
