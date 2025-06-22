@@ -12,10 +12,9 @@ HAND_SIZE = 6  # number of cards a player has. Max 26. MUST BE EVEN!!!
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 TITLE_TEXT = colored("GOLF.PY - by Freddie Rayner", "yellow")
 
-BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE = 3
-BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE = 0
-BOT_ACCEPTABLE_SCORE_EARLY_GAME_DIFFERENCE = -4
-BOT_EARLY_GAME_NUM_FACE_UP = 3
+BOT_ACCEPTABLE_DIFFERENCE_EARLY_GAME = 1
+BOT_ACCEPTABLE_DIFFERENCE = 3
+BOT_ACCEPTABLE_DIFFERENCE_LATE_GAME = 4
 
 
 class Card:
@@ -156,103 +155,67 @@ class Computer:
         self.hand = hand
         self.skill = skill
 
+        self.seen_cards = []
+        self.hidden_card_estimate = 0
+
+    def calculate_hidden_card_estimate(self):
+        total = 0
+        temp_pile = Pile(False)
+        temp_pile.fill_deck()
+        for card in temp_pile.cards:
+            total += card.score
+        for c in self.seen_cards:
+            total -= c.score
+        self.hidden_card_estimate = total / temp_pile.get_size()
+
     def initialise_hand(self):
         self.hand.face_up[0][0] = True
         self.hand.face_up[1][2] = True
+        self.seen_cards.append(self.hand.cards[0][0])
+        self.seen_cards.append(self.hand.cards[1][2])
 
-    def calculate_turn(self, player_h, discard_p, draw_p):
+    def simulate_move(self, card, row, column):
+        temp_c, temp_face_up = self.hand.cards[row][column], self.hand.face_up[row][column]
+        self.hand.cards[row][column] = card
+        self.hand.face_up[row][column] = True
+        score = self.hand.calculate_score()
+        self.hand.cards[row][column] = temp_c
+        self.hand.face_up[row][column] = temp_face_up
+        return score
+
+    def best_move_with_card(self, card):
+        # create an array of all the best possible moves with this card, based on the predicted score of the face-down cards
         current_score = self.hand.calculate_score()
-        current_player_score = player_h.calculate_score()
+        best_difference = -999
+        best_moves = []
+        for row in range(2):
+            for column in range(self.hand.width):
+                new_score = self.simulate_move(card, row, column)
+                for i in range(HAND_SIZE - (self.hand.get_num_face_up())):
+                    new_score += self.hidden_card_estimate
+                if not self.hand.face_up[row][column]:
+                    new_score -= self.hidden_card_estimate
+                difference = current_score - new_score
+                if difference > best_difference:
+                    best_moves = [((row, column), difference)]
+                    best_difference = difference
+                elif difference == best_difference:
+                    best_moves.append(((row, column), difference))
 
-        losing = current_score < current_player_score
+        return random.choice(best_moves)
 
-        possible_moves = []  # (take_pile, place_position, score_difference, replaces_face_up)
+    def calculate_turn(self):
+        best_discard_pile_move = self.best_move_with_card(discard_pile.cards[0])
+        early_game = self.hand.get_num_face_up() <= 2
+        late_game = self.hand.get_num_face_up() >= 4
+        acceptable_difference = BOT_ACCEPTABLE_DIFFERENCE_LATE_GAME if late_game else (BOT_ACCEPTABLE_DIFFERENCE_EARLY_GAME if early_game else BOT_ACCEPTABLE_DIFFERENCE)
+        if best_discard_pile_move[1] >= acceptable_difference:
+            return 1, best_discard_pile_move[0], True
 
-        # find the move with the lowest score from the discard pile
-        discard_pile_top = discard_p.cards[0]
-        initial_score = self.hand.calculate_score()
-        for i in range(2):
-            for j in range(self.hand.width):
-                temp_c = self.hand.cards[i][j]
-                self.hand.cards[i][j] = discard_pile_top
-                temp_face_up = self.hand.face_up[i][j]
-                self.hand.face_up[i][j] = True
-                score_difference = initial_score - self.hand.calculate_score()
-                self.hand.face_up[i][j] = temp_face_up
-                self.hand.cards[i][j] = temp_c
-                possible_moves.append((1, (i, j), score_difference, self.hand.face_up[i][j]))
-
-        # remove all the bad ones
-        best_face_up_moves = []
-        best_face_down_moves = []
-        highest_face_up_difference = 0  # i dont wanna replace a face-up card with a higher card
-        highest_face_down_difference = -999
-        for move in possible_moves:
-            if move[3]:
-                if move[2] > highest_face_up_difference:
-                    best_face_up_moves = [move]
-                    highest_face_up_difference = move[2]
-                elif move[2] == highest_face_up_difference:
-                    best_face_up_moves.append(move)
-            else:
-                if move[2] > highest_face_down_difference:
-                    best_face_down_moves = [move]
-                    highest_face_down_difference = move[2]
-                elif move[2] == highest_face_down_difference:
-                    best_face_down_moves.append(move)
-
-        if highest_face_down_difference >= BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE:
-            chosen_move = random.choice(best_face_down_moves)
-            return chosen_move[0], chosen_move[1], True
-        elif highest_face_up_difference >= BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE:
-            chosen_move = random.choice(best_face_up_moves)
-            return chosen_move[0], chosen_move[1], True
-
-        # now lets do the same for the draw pile!
-        possible_moves = []  # (take_pile, place_position, score_difference, replaces_face_up)
-
-        # find the move with the lowest score from the discard pile
-        draw_pile_top = draw_p.cards[0]
-        initial_score = self.hand.calculate_score()
-        for i in range(2):
-            for j in range(self.hand.width):
-                temp_c = self.hand.cards[i][j]
-                self.hand.cards[i][j] = draw_pile_top
-                temp_face_up = self.hand.face_up[i][j]
-                self.hand.face_up[i][j] = True
-                score_difference = initial_score - self.hand.calculate_score()
-                self.hand.face_up[i][j] = temp_face_up
-                self.hand.cards[i][j] = temp_c
-                possible_moves.append((0, (i, j), score_difference, self.hand.face_up[i][j]))
-
-        # remove all the bad ones
-        best_face_up_moves = []
-        best_face_down_moves = []
-        highest_face_up_difference = 0  # i dont wanna replace a face-up card with a higher card
-        highest_face_down_difference = -999
-        for move in possible_moves:
-            if move[3]:
-                if move[2] > highest_face_up_difference:
-                    best_face_up_moves = [move]
-                    highest_face_up_difference = move[2]
-                elif move[2] == highest_face_up_difference:
-                    best_face_up_moves.append(move)
-            else:
-                if move[2] > highest_face_down_difference:
-                    best_face_down_moves = [move]
-                    highest_face_down_difference = move[2]
-                elif move[2] == highest_face_down_difference:
-                    best_face_down_moves.append(move)
-
-        early_game = self.hand.get_num_face_up() <= BOT_EARLY_GAME_NUM_FACE_UP
-        if (early_game and highest_face_down_difference > BOT_ACCEPTABLE_SCORE_EARLY_GAME_DIFFERENCE) or highest_face_down_difference >= BOT_ACCEPTABLE_SCORE_FACE_DOWN_DIFFERENCE:
-            chosen_move = random.choice(best_face_down_moves)
-            return chosen_move[0], chosen_move[1], True
-        elif highest_face_up_difference >= BOT_ACCEPTABLE_SCORE_FACE_UP_DIFFERENCE:
-            chosen_move = random.choice(best_face_up_moves)
-            return chosen_move[0], chosen_move[1], True
-        else:
-            return 0, (0, 0), False
+        best_draw_pile_move = self.best_move_with_card(draw_pile.cards[0])
+        if best_draw_pile_move[1] >= acceptable_difference:
+            return 0, best_draw_pile_move[0], True
+        return 0, (0, 0), False
 
 
 # get an input as an int and check it is between two values
@@ -332,12 +295,14 @@ player_hand = Hand(draw_pile)
 # i need to make skill levels for dumb players
 computer = Computer(Hand(draw_pile), 0)
 computer.initialise_hand()
+computer.seen_cards.append(discard_pile.cards[0])
 
 render_game_state()
 
 print("Before the game starts, you must turn over two cards.")
 turn_row_1, turn_column_1 = input_2d(">> Enter the position of the first card, (e.g., A1): ", 1, player_hand.width)
 player_hand.face_up[turn_row_1][turn_column_1] = True
+computer.seen_cards.append(player_hand.cards[turn_row_1][turn_column_1])
 
 render_game_state()
 print("Before the game starts, you must turn over two cards.")
@@ -349,6 +314,7 @@ while True:
         break
 
 player_hand.face_up[turn_row_2][turn_column_2] = True
+computer.seen_cards.append(player_hand.cards[turn_row_2][turn_column_2])
 
 # main loop
 game_over = False
@@ -394,11 +360,15 @@ while True:
         # place the old card on the discard pile
         temp_card = player_hand.cards[place_row][place_column]
         player_hand.cards[place_row][place_column] = draw_card
+        if not player_hand.face_up[place_row][place_column]:
+            computer.seen_cards.append(temp_card)
         player_hand.face_up[place_row][place_column] = True
         discard_pile.add_to_top(temp_card)
+        computer.seen_cards.append(draw_card)
 
     else:
         discard_pile.add_to_top(draw_card)
+        computer.seen_cards.append(draw_card)
 
     render_game_state()
     render_piles()
@@ -410,8 +380,9 @@ while True:
         game_over = True
 
     # computer's go now!
+    computer.calculate_hidden_card_estimate()
     print("[COMPUTER] Its my turn now!")
-    computer_turn = computer.calculate_turn(player_hand, discard_pile, draw_pile)
+    computer_turn = computer.calculate_turn()
     time.sleep(1)
     print("[COMPUTER] hmmm...")
     time.sleep(2)
@@ -421,6 +392,7 @@ while True:
     else:
         print("[COMPUTER] I'll take this card from the discard pile.")
         computer_take_card = discard_pile.remove_top()
+    computer.seen_cards.append(computer_take_card)
     time.sleep(3)
     if not computer_turn[2]:
         print("[COMPUTER] I don't want this card, I'll put it on the discard pile.")
@@ -429,6 +401,8 @@ while True:
         r, c = computer_turn[1]
         print(f"[COMPUTER] Ok, I'll take this card and place it at {ALPHABET[c]}{r + 1}")
         discard_pile.add_to_top(computer.hand.cards[r][c])
+        if not computer.hand.face_up[r][c]:
+            computer.seen_cards.append(computer.hand.cards[r][c])
         computer.hand.cards[r][c] = computer_take_card
         computer.hand.face_up[r][c] = True
 
